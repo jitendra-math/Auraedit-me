@@ -2,8 +2,10 @@
 
 import JSZip from "jszip";
 
-const DB_NAME = "AuraMobileDB_v1";
+const DB_NAME = "AuraMobileDB_v2"; // version bump
 const STORE_NAME = "projects";
+
+let saveTimer = null; // debounce save
 
 const AuraFS = {
   project: {
@@ -18,34 +20,39 @@ const AuraFS = {
   // =============================
   async init() {
     const saved = await this.loadFromDB();
+
     if (saved) {
       this.project = saved;
     } else {
       this.project = {
         id: Date.now(),
-        name: "untitled-project",
+        name: "my-project",
         type: "vanilla",
         root: []
       };
       await this.saveToDB();
     }
+
     return this.project;
   },
 
   // =============================
-  // AI STRUCTURE PARSER
+  // SAFE AI STRUCTURE PARSER
   // =============================
   async parseAIStructure(text) {
+    if (!text.trim()) return;
+
     const lines = text.split("\n").filter(l => l.trim() !== "");
 
-    this.project = {
+    // 🔴 IMPORTANT: do NOT destroy existing project name
+    const newProject = {
       id: Date.now(),
-      name: "ai-project",
+      name: this.project.name || "my-project",
       type: "vanilla",
       root: []
     };
 
-    const stack = [{ depth: -1, children: this.project.root }];
+    const stack = [{ depth: -1, children: newProject.root }];
 
     lines.forEach(line => {
       const depth = line.search(/\w|(?:\.[a-zA-Z0-9]+)/);
@@ -61,7 +68,7 @@ const AuraFS = {
         type: isFolder ? "folder" : "file",
         ...(isFolder
           ? { children: [], isOpen: true }
-          : { content: `// ${nodeName}`, isOpen: false })
+          : { content: "", isOpen: false })
       };
 
       while (stack.length > 1 && stack[stack.length - 1].depth >= depth) {
@@ -75,12 +82,13 @@ const AuraFS = {
       }
     });
 
+    this.project = newProject;
     await this.saveToDB();
     return this.project;
   },
 
   // =============================
-  // CRUD
+  // FIND NODE
   // =============================
   findNode(id, list = this.project.root) {
     for (const node of list) {
@@ -93,6 +101,9 @@ const AuraFS = {
     return null;
   },
 
+  // =============================
+  // ADD NODE
+  // =============================
   addNode(parentId, name, type, content = "") {
     const newNode = {
       id: this.generateId(),
@@ -117,6 +128,9 @@ const AuraFS = {
     return newNode;
   },
 
+  // =============================
+  // DELETE
+  // =============================
   deleteNode(id) {
     const recursiveDelete = (list) => {
       const idx = list.findIndex(n => n.id === id);
@@ -136,16 +150,24 @@ const AuraFS = {
     this.saveToDB();
   },
 
+  // =============================
+  // UPDATE FILE (DEBOUNCED SAVE)
+  // =============================
   updateFile(id, content) {
     const node = this.findNode(id);
-    if (node && node.type === "file") {
-      node.content = content;
+    if (!node || node.type !== "file") return;
+
+    node.content = content;
+
+    // debounce DB save
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
       this.saveToDB();
-    }
+    }, 400);
   },
 
   // =============================
-  // EXPORT ZIP
+  // EXPORT ZIP (MEMORY SAFE)
   // =============================
   async downloadProject() {
     const zip = new JSZip();
@@ -168,8 +190,11 @@ const AuraFS = {
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${this.project.name}.zip`;
+    a.download = `${this.project.name || "project"}.zip`;
     a.click();
+
+    // 🔥 memory cleanup
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   },
 
   // =============================
