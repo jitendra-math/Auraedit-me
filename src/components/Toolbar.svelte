@@ -1,10 +1,11 @@
 <script>
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onMount } from "svelte";
   import AuraFS from "../core/auraFS.js";
-  import { projectName } from "../stores/projectStore.js";
+  import { projectName, setProjectName } from "../stores/projectStore.js";
   import AiStructureModal from "../modals/AiStructureModal.svelte";
 
   const dispatch = createEventDispatcher();
+
   let showAI = false;
 
   function openMenu() {
@@ -15,9 +16,16 @@
     showAI = true;
   }
 
-  function exportZip() {
-    AuraFS.downloadProject();
+  async function exportZip() {
+    await AuraFS.downloadProject();
   }
+
+  onMount(() => {
+    // sync project name on load
+    if (AuraFS.project?.name) {
+      setProjectName(AuraFS.project.name);
+    }
+  });
 </script>
 
 <header class="h-12 flex items-center justify-between px-3 bg-panel border-b border-zinc-800">
@@ -32,7 +40,7 @@
     </button>
 
     <div class="text-sm text-zinc-300 font-medium truncate max-w-[160px]">
-      {$projectName || "Aura Project"}
+      {$projectName || "my-project"}
     </div>
   </div>
 
@@ -41,18 +49,18 @@
 
     <!-- AI structure -->
     <button 
-      class="px-3 py-1.5 rounded-lg bg-soft text-sm text-zinc-200 hover:bg-zinc-700"
+      class="px-3 py-1.5 rounded-lg bg-soft text-sm text-zinc-200 hover:bg-zinc-700 transition"
       on:click={openAI}
     >
-      AI Structure
+      AI
     </button>
 
     <!-- Export -->
     <button 
-      class="px-3 py-1.5 rounded-lg bg-accent text-white text-sm hover:opacity-90"
+      class="px-3 py-1.5 rounded-lg bg-accent text-white text-sm hover:opacity-90 transition"
       on:click={exportZip}
     >
-      Export
+      ZIP
     </button>
 
   </div>
