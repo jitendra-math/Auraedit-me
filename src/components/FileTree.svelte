@@ -72,43 +72,64 @@
   {/if}
 
   {#each tree as node}
-    <TreeItem {node} depth={0}/>
+    {#if node.type === "folder"}
+      <div class="group">
+        <div class="flex items-center pr-2 hover:bg-soft" style="padding-left:14px;height:42px">
+          <div class="flex-1 flex items-center gap-2 overflow-hidden" on:click={() => toggleFolder(node)}>
+            <i class="{getIcon(node)} text-zinc-400"></i>
+            <span class="truncate">{node.name}</span>
+          </div>
+
+          <div class="opacity-0 group-hover:opacity-100 flex gap-2 text-zinc-500">
+            <i class="ri-file-add-line cursor-pointer" on:click={() => newFile(node.id)}></i>
+            <i class="ri-folder-add-line cursor-pointer" on:click={() => newFolder(node.id)}></i>
+            <i class="ri-edit-line cursor-pointer" on:click={() => rename(node)}></i>
+            <i class="ri-delete-bin-line cursor-pointer" on:click={() => del(node)}></i>
+          </div>
+        </div>
+
+        {#if node.isOpen}
+          {#each node.children as child}
+            <TreeChild node={child} depth={1}/>
+          {/each}
+        {/if}
+      </div>
+    {:else}
+      <div class="flex items-center pr-2 hover:bg-soft" style="padding-left:14px;height:42px">
+        <div class="flex-1 flex items-center gap-2 overflow-hidden" on:click={() => openFile(node)}>
+          <i class="{getIcon(node)} text-zinc-400"></i>
+          <span class="truncate">{node.name}</span>
+        </div>
+
+        <div class="opacity-0 group-hover:opacity-100 flex gap-2 text-zinc-500">
+          <i class="ri-edit-line cursor-pointer" on:click={() => rename(node)}></i>
+          <i class="ri-delete-bin-line cursor-pointer" on:click={() => del(node)}></i>
+        </div>
+      </div>
+    {/if}
   {/each}
 </div>
 
-<!-- Recursive tree item -->
+<!-- Child recursion -->
 {#if false}{/if}
-<script>
-  export let node;
-  export let depth = 0;
+<script context="module">
+  export function TreeChild({ node, depth }) {
+    return {
+      c() {},
+      m(target) {
+        const div = document.createElement("div");
+        div.style.paddingLeft = `${depth * 16 + 14}px`;
+        div.style.height = "42px";
+        div.className = "flex items-center pr-2 hover:bg-soft";
+
+        div.innerHTML = `
+          <div class="flex-1 flex items-center gap-2 overflow-hidden">
+            <i class="ri-file-code-fill text-zinc-400"></i>
+            <span class="truncate">${node.name}</span>
+          </div>
+        `;
+        target.appendChild(div);
+      }
+    };
+  }
 </script>
-
-<div class="group">
-  <div
-    class="flex items-center pr-2 hover:bg-soft"
-    style="padding-left:{depth * 16 + 14}px;height:42px"
-  >
-    <div
-      class="flex-1 flex items-center gap-2 overflow-hidden"
-      on:click={() => node.type === 'folder' ? toggleFolder(node) : openFile(node)}
-    >
-      <i class="{getIcon(node)} text-zinc-400"></i>
-      <span class="truncate">{node.name}</span>
-    </div>
-
-    <div class="opacity-0 group-hover:opacity-100 flex gap-2 text-zinc-500">
-      {#if node.type === "folder"}
-        <i class="ri-file-add-line cursor-pointer" on:click={() => newFile(node.id)}></i>
-        <i class="ri-folder-add-line cursor-pointer" on:click={() => newFolder(node.id)}></i>
-      {/if}
-      <i class="ri-edit-line cursor-pointer" on:click={() => rename(node)}></i>
-      <i class="ri-delete-bin-line cursor-pointer" on:click={() => del(node)}></i>
-    </div>
-  </div>
-
-  {#if node.type === "folder" && node.isOpen}
-    {#each node.children as child}
-      <TreeItem node={child} depth={depth + 1}/>
-    {/each}
-  {/if}
-</div>
