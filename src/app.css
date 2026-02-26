@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global Reset Tweaks */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0b0b0f;
+  color: white;
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+
+/* Scrollbar minimal */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #222230;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* CodeMirror Overrides (clean dark premium) */
+.CodeMirror {
+  height: 100% !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 14px;
+  background: #0f0f14 !important;
+  color: #e4e4e7;
+}
+
+.CodeMirror-gutters {
+  background: #111117 !important;
+  border-right: 1px solid #1f1f28;
+}
+
+.CodeMirror-cursor {
+  border-left: 2px solid #5b8cff !important;
+}
+
+.CodeMirror-selected {
+  background: rgba(91, 140, 255, 0.2) !important;
+}
+
+/* Smooth transitions everywhere */
+button, .transition-all {
+  transition: all 0.2s ease;
+}
