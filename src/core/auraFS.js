@@ -1,27 +1,19 @@
 // src/core/auraFS.js
-
 import JSZip from "jszip";
 
-const DB_NAME = "AuraMobileDB_v2"; // version bump
+const DB_NAME = "AuraMobileDB_v2";
 const STORE_NAME = "projects";
 
-let saveTimer = null; // debounce save
+let dbPromise = null;
 
 const AuraFS = {
-  project: {
-    id: null,
-    name: null,
-    type: null,
-    root: []
-  },
+  project: null,
 
-  // =============================
-  // INIT
-  // =============================
+  // ================= INIT =================
   async init() {
     const saved = await this.loadFromDB();
 
-    if (saved) {
+    if (saved && saved.root) {
       this.project = saved;
     } else {
       this.project = {
@@ -36,77 +28,55 @@ const AuraFS = {
     return this.project;
   },
 
-  // =============================
-  // SAFE AI STRUCTURE PARSER
-  // =============================
+  // ================= AI STRUCTURE =================
   async parseAIStructure(text) {
-    if (!text.trim()) return;
+    const lines = text.split("\n").filter(l => l.trim());
 
-    const lines = text.split("\n").filter(l => l.trim() !== "");
+    this.project.root = [];
 
-    // 🔴 IMPORTANT: do NOT destroy existing project name
-    const newProject = {
-      id: Date.now(),
-      name: this.project.name || "my-project",
-      type: "vanilla",
-      root: []
-    };
-
-    const stack = [{ depth: -1, children: newProject.root }];
+    const stack = [{ depth: -1, children: this.project.root }];
 
     lines.forEach(line => {
-      const depth = line.search(/\w|(?:\.[a-zA-Z0-9]+)/);
-      const cleanName = line.replace(/[├└│─|]/g, "").trim();
-      if (!cleanName) return;
+      const depth = line.search(/\w/);
+      const clean = line.replace(/[├└│─]/g, "").trim();
+      if (!clean) return;
 
-      const isFolder = cleanName.endsWith("/") || !cleanName.includes(".");
-      const nodeName = cleanName.replace(/\/$/, "");
+      const isFolder = clean.endsWith("/") || !clean.includes(".");
+      const name = clean.replace("/", "");
 
-      const newNode = {
-        id: this.generateId(),
-        name: nodeName,
+      const node = {
+        id: this.id(),
+        name,
         type: isFolder ? "folder" : "file",
         ...(isFolder
           ? { children: [], isOpen: true }
-          : { content: "", isOpen: false })
+          : { content: `// ${name}`, isOpen: false })
       };
 
-      while (stack.length > 1 && stack[stack.length - 1].depth >= depth) {
-        stack.pop();
-      }
+      while (stack.length > 1 && stack.at(-1).depth >= depth) stack.pop();
+      stack.at(-1).children.push(node);
 
-      stack[stack.length - 1].children.push(newNode);
-
-      if (isFolder) {
-        stack.push({ depth, children: newNode.children });
-      }
+      if (isFolder) stack.push({ depth, children: node.children });
     });
 
-    this.project = newProject;
     await this.saveToDB();
-    return this.project;
+    window.dispatchEvent(new CustomEvent("refresh-tree"));
   },
 
-  // =============================
-  // FIND NODE
-  // =============================
+  // ================= CRUD =================
   findNode(id, list = this.project.root) {
-    for (const node of list) {
-      if (node.id === id) return node;
-      if (node.children) {
-        const found = this.findNode(id, node.children);
-        if (found) return found;
+    for (const n of list) {
+      if (n.id === id) return n;
+      if (n.children) {
+        const f = this.findNode(id, n.children);
+        if (f) return f;
       }
     }
-    return null;
   },
 
-  // =============================
-  // ADD NODE
-  // =============================
   addNode(parentId, name, type, content = "") {
-    const newNode = {
-      id: this.generateId(),
+    const node = {
+      id: this.id(),
       name,
       type,
       ...(type === "file"
@@ -114,128 +84,102 @@ const AuraFS = {
         : { children: [], isOpen: true })
     };
 
-    if (!parentId) {
-      this.project.root.push(newNode);
-    } else {
+    if (!parentId) this.project.root.push(node);
+    else {
       const parent = this.findNode(parentId);
-      if (parent?.children) {
-        parent.children.push(newNode);
-        parent.isOpen = true;
-      }
+      if (parent?.children) parent.children.push(node);
     }
 
     this.saveToDB();
-    return newNode;
+    window.dispatchEvent(new CustomEvent("refresh-tree"));
+    return node;
   },
 
-  // =============================
-  // DELETE
-  // =============================
   deleteNode(id) {
-    const recursiveDelete = (list) => {
-      const idx = list.findIndex(n => n.id === id);
-      if (idx > -1) {
-        list.splice(idx, 1);
-        return true;
-      }
-      for (const node of list) {
-        if (node.children && recursiveDelete(node.children)) {
-          return true;
-        }
-      }
-      return false;
+    const remove = (list) => {
+      const i = list.findIndex(n => n.id === id);
+      if (i > -1) return list.splice(i,1);
+
+      list.forEach(n => n.children && remove(n.children));
     };
 
-    recursiveDelete(this.project.root);
+    remove(this.project.root);
+    this.saveToDB();
+    window.dispatchEvent(new CustomEvent("refresh-tree"));
+  },
+
+  updateFile(id, content) {
+    const node = this.findNode(id);
+    if (!node) return;
+    node.content = content;
     this.saveToDB();
   },
 
-  // =============================
-  // UPDATE FILE (DEBOUNCED SAVE)
-  // =============================
-  updateFile(id, content) {
-    const node = this.findNode(id);
-    if (!node || node.type !== "file") return;
-
-    node.content = content;
-
-    // debounce DB save
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      this.saveToDB();
-    }, 400);
-  },
-
-  // =============================
-  // EXPORT ZIP (MEMORY SAFE)
-  // =============================
+  // ================= ZIP =================
   async downloadProject() {
     const zip = new JSZip();
 
-    const addToZip = (folder, nodes) => {
-      nodes.forEach(node => {
-        if (node.type === "folder") {
-          const newFolder = folder.folder(node.name);
-          addToZip(newFolder, node.children);
-        } else {
-          folder.file(node.name, node.content || "");
-        }
+    const walk = (folder, nodes) => {
+      nodes.forEach(n => {
+        if (n.type === "folder") {
+          const f = folder.folder(n.name);
+          walk(f, n.children);
+        } else folder.file(n.name, n.content || "");
       });
     };
 
-    addToZip(zip, this.project.root);
+    walk(zip, this.project.root);
 
-    const blob = await zip.generateAsync({ type: "blob" });
+    const blob = await zip.generateAsync({ type:"blob" });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${this.project.name || "project"}.zip`;
+    a.download = `${this.project.name}.zip`;
     a.click();
 
-    // 🔥 memory cleanup
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    URL.revokeObjectURL(url);
   },
 
-  // =============================
-  // IndexedDB
-  // =============================
-  getDB() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
+  // ================= DB =================
+  async db() {
+    if (dbPromise) return dbPromise;
 
-      req.onupgradeneeded = (e) => {
+    dbPromise = new Promise((res, rej)=>{
+      const req = indexedDB.open(DB_NAME,1);
+
+      req.onupgradeneeded = e=>{
         const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
+        if(!db.objectStoreNames.contains(STORE_NAME))
           db.createObjectStore(STORE_NAME);
-        }
       };
 
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onsuccess = ()=>res(req.result);
+      req.onerror = ()=>rej(req.error);
     });
+
+    return dbPromise;
   },
 
   async saveToDB() {
-    const db = await this.getDB();
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    tx.objectStore(STORE_NAME).put(this.project, "activeProject");
+    if(!this.project) return;
+    const db = await this.db();
+    const tx = db.transaction(STORE_NAME,"readwrite");
+    tx.objectStore(STORE_NAME).put(this.project,"active");
   },
 
   async loadFromDB() {
-    const db = await this.getDB();
-    return new Promise(resolve => {
-      const tx = db.transaction(STORE_NAME, "readonly");
-      const req = tx.objectStore(STORE_NAME).get("activeProject");
-      req.onsuccess = () => resolve(req.result);
+    const db = await this.db();
+    return new Promise(r=>{
+      const tx = db.transaction(STORE_NAME,"readonly");
+      const req = tx.objectStore(STORE_NAME).get("active");
+      req.onsuccess = ()=>r(req.result);
+      req.onerror = ()=>r(null);
     });
   },
 
-  generateId() {
-    return (
-      Date.now().toString(36) +
-      Math.random().toString(36).substring(2, 7)
-    );
+  id(){
+    return Math.random().toString(36).slice(2);
   }
 };
 
