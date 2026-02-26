@@ -1,11 +1,10 @@
 <script>
-  import { onMount } from "svelte";
   import FileTree from "./FileTree.svelte";
   import { createEventDispatcher } from "svelte";
-  import { sidebarOpen } from "../stores/projectStore.js";
 
   const dispatch = createEventDispatcher();
 
+  // Parent se aayega (App.svelte se)
   export let sidebarOpen = false;
 
   function close() {
@@ -24,7 +23,11 @@
     <div class="font-semibold text-zinc-200">
       AURA
     </div>
-    <button class="text-zinc-400" on:click={close}>
+
+    <button
+      class="text-zinc-400"
+      on:click={close}
+    >
       <i class="ri-close-line text-xl"></i>
     </button>
   </div>
