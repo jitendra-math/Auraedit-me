@@ -7,20 +7,39 @@
 
   let input = "";
   let loading = false;
+  let error = "";
 
   async function generate() {
-    if (!input.trim()) return;
+    if (!input.trim()) {
+      error = "Paste structure first";
+      return;
+    }
+
+    if (loading) return;
     loading = true;
+    error = "";
 
-    await AuraFS.parseAIStructure(input);
-    setProjectName(AuraFS.project.name);
+    try {
+      await AuraFS.parseAIStructure(input);
 
-    window.dispatchEvent(new CustomEvent("refresh-tree"));
+      // sync project name
+      setProjectName(AuraFS.project.name);
+
+      // refresh UI everywhere
+      window.dispatchEvent(new CustomEvent("refresh-tree"));
+      window.dispatchEvent(new CustomEvent("open-first-file"));
+
+      dispatch("close");
+    } catch (e) {
+      error = "Invalid structure";
+      console.error(e);
+    }
+
     loading = false;
-    dispatch("close");
   }
 
   function close() {
+    if (loading) return;
     dispatch("close");
   }
 </script>
@@ -48,17 +67,21 @@
       class="w-full p-3 text-xs bg-soft border border-zinc-700 rounded-lg text-zinc-200 font-mono resize-none outline-none"
     ></textarea>
 
+    {#if error}
+      <div class="text-red-400 text-xs mt-2">{error}</div>
+    {/if}
+
     <div class="mt-4 flex justify-end gap-2">
 
       <button
-        class="px-3 py-1.5 text-xs rounded-lg bg-soft text-zinc-300 hover:bg-zinc-700"
+        class="px-3 py-1.5 text-xs rounded-lg bg-soft text-zinc-300 hover:bg-zinc-700 transition"
         on:click={close}
       >
         Cancel
       </button>
 
       <button
-        class="px-3 py-1.5 text-xs rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-50"
+        class="px-3 py-1.5 text-xs rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-50 transition"
         on:click={generate}
         disabled={loading}
       >
