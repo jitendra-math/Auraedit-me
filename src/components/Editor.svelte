@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import AuraFS from "../core/auraFS.js";
   import { activeFileId } from "../stores/projectStore.js";
   import { get } from "svelte/store";
@@ -21,7 +21,14 @@
       lineWrapping: false
     });
 
-    // autosave
+    // cursor position
+    editor.on("cursorActivity", () => {
+      const pos = editor.getCursor();
+      const text = `Ln ${pos.line + 1}, Col ${pos.ch + 1}`;
+      window.dispatchEvent(new CustomEvent("cursor-update", { detail: text }));
+    });
+
+    // autosave handled by auraFS debounce
     editor.on("change", () => {
       const id = get(activeFileId);
       if (!id) return;
@@ -34,38 +41,53 @@
     if (!node) return;
 
     let mode = "javascript";
+
     if (node.name.endsWith(".html")) mode = "htmlmixed";
-    if (node.name.endsWith(".css")) mode = "css";
-    if (node.name.endsWith(".jsx")) mode = "jsx";
+    else if (node.name.endsWith(".css")) mode = "css";
+    else if (node.name.endsWith(".json")) mode = "application/json";
+    else if (node.name.endsWith(".md")) mode = "markdown";
+    else if (node.name.endsWith(".ts")) mode = "javascript";
+    else if (node.name.endsWith(".jsx")) mode = "jsx";
 
     editor.setOption("mode", mode);
     editor.setValue(node.content || "");
     editor.clearHistory();
+    editor.focus();
   }
+
+  function openFirstFile() {
+    const find = (nodes) => {
+      for (const n of nodes) {
+        if (n.type === "file") return n;
+        if (n.children) {
+          const f = find(n.children);
+          if (f) return f;
+        }
+      }
+      return null;
+    };
+
+    const first = find(AuraFS.project.root);
+    if (first) openFile(first.id);
+  }
+
+  let openHandler;
+  let firstHandler;
 
   onMount(() => {
     initEditor();
 
-    window.addEventListener("open-file", (e) => {
-      openFile(e.detail);
-    });
+    openHandler = (e) => openFile(e.detail);
+    firstHandler = () => openFirstFile();
 
-    window.addEventListener("open-first-file", () => {
-      const first = findFirstFile(AuraFS.project.root);
-      if (first) openFile(first.id);
-    });
+    window.addEventListener("open-file", openHandler);
+    window.addEventListener("open-first-file", firstHandler);
   });
 
-  function findFirstFile(nodes) {
-    for (const n of nodes) {
-      if (n.type === "file") return n;
-      if (n.children) {
-        const f = findFirstFile(n.children);
-        if (f) return f;
-      }
-    }
-    return null;
-  }
+  onDestroy(() => {
+    window.removeEventListener("open-file", openHandler);
+    window.removeEventListener("open-first-file", firstHandler);
+  });
 </script>
 
 <div class="absolute inset-0">
