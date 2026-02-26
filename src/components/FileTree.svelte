@@ -12,10 +12,7 @@
   onMount(() => {
     refresh();
     window.addEventListener("refresh-tree", refresh);
-
-    return () => {
-      window.removeEventListener("refresh-tree", refresh);
-    };
+    return () => window.removeEventListener("refresh-tree", refresh);
   });
 
   function toggleFolder(node) {
@@ -80,7 +77,6 @@
   {/each}
 </div>
 
-<!-- Recursive component -->
 <script>
   export let node;
   export let depth = 0;
@@ -89,7 +85,7 @@
 <div class="group">
   <div
     class="flex items-center pr-2 hover:bg-soft transition"
-    class:bg-accent/20={$activeFileId === node.id}
+    class:bg-accent={$activeFileId === node.id}
     style="padding-left:{depth * 16 + 14}px;height:42px"
   >
     <div
